@@ -80,7 +80,7 @@ Actor:
 View the foundation here: [base.sops](./base.sops)
 
 ## Example SOPs File
-View a sample SOPs file that defines a simple coffee shop workflow: [coffee-shop.sops](./coffee-shop.sops)
+View a sample SOPs file that defines a simple coffee shop workflow: [coffee-shop.sops](./examples/coffee-shop.sops)
 
 
 ## Roadmap & Next Steps
