@@ -1,0 +1,320 @@
+# ======================================================================
+# SOPs Base Concepts Definition (base.sops)
+# ----------------------------------------------------------------------
+# This file defines the minimal core concepts, actions, actors, context,
+# and step primitives for the SOPs language. All engine-reserved keys
+# begin with an underscore (_). Business or user-defined keys must NOT.
+# ======================================================================
+
+version: 1.0        # File format version
+namespace: sops.base  # Logical grouping for these definitions
+
+concepts:
+
+  # --------------------------------------------------------------------
+  # Concept: Root base for all other definitions
+  # --------------------------------------------------------------------
+  Concept:
+    schema:
+      properties:
+        id:
+          type: string
+          # Unique identifier for this concept (e.g., "actor", "user_process")
+        name:
+          type: string
+          # Human-readable name (e.g., "Actor", "User Process")
+        description:
+          type: string
+          # Detailed explanation of what this concept represents
+
+  # --------------------------------------------------------------------
+  # Action: Defines a callable contract (atomic or process-like)
+  # --------------------------------------------------------------------
+  Action:
+    extends: Concept
+    schema:
+      properties:
+        _expects:
+          type: object
+          description: |
+            JSON Schema for the expected input context/payload.
+            Defines what data the caller must provide.
+        _returns:
+          type: object
+          description: |
+            JSON Schema for the output context/payload.
+            Defines what data this action will return.
+        _call:
+          type: array
+          items:
+            type: string
+          description: |
+            Triplet [actor, action, context_pointer]. Delegates execution
+            to another actor/action using the given context.
+        _step:
+          type: array
+          items:
+            type: string
+          description: |
+            Triplet [self, step_name, context_pointer]. Starts execution
+            at a named workflow step within this actor. Takes precedence
+            over _call if both are present.
+
+  # --------------------------------------------------------------------
+  # Actor: Container for actions and optional workflows (steps)
+  # --------------------------------------------------------------------
+  Actor:
+    extends: Concept
+    schema:
+      properties:
+        _actions:
+          type: object
+          additionalProperties:
+            $ref: "#/concepts/Action"
+          description: |
+            Map of action names → Action contracts. Each action defines
+            its schemas and either delegation (_call) or process entry (_step).
+        _steps:
+          type: object
+          description: |
+            (Optional) Map of workflow step names → Step definitions.
+            Only entered by actions referencing those steps via _step,
+            or by default when an action omits _call/_step.
+        _default:
+          type: string
+          description: |
+            (Optional) Fallback step name for decision flows that lack
+            an explicit _default. Must match a key in _steps.
+
+  # --------------------------------------------------------------------
+  # Context: Runtime data & system state passed between steps
+  # --------------------------------------------------------------------
+  Context:
+    extends: Concept
+    schema:
+      properties:
+        _payload:
+          type: object
+          description: |
+            Business-specific data for this execution. User-defined.
+        _requester:
+          type: string
+          description: |
+            Identifier of the actor or user initiating this action.
+        _operations:
+          type: object
+          description: |
+            Intermediate results keyed by step name. Used for data passing.
+        _trace:
+          type: array
+          items: { type: object }
+          description: |
+            Audit log: chronological record of executed steps/outcomes.
+        _state:
+          type: object
+          description: |
+            Overall state of the workflow (e.g., success/failure codes).
+        _debug:
+          type: object
+          description: |
+            Developer debug messages or diagnostic details.
+        _meta:
+          type: object
+          description: |
+            Miscellaneous metadata (timestamps, version, environment).
+      required:
+        - _payload
+        - _requester
+
+  # --------------------------------------------------------------------
+  # Step: Single unit of workflow logic; exactly one primitive per step
+  # --------------------------------------------------------------------
+  Step:
+    extends: Concept
+    schema:
+      properties:
+
+        # === Operation Step ===
+        _operation:
+          description: "Invoke an action on any actor/process"
+          properties:
+            _call:
+              type: array
+              items: { type: string }
+              description: |
+                Triplet [actor, action, context]. Calls any actor/action.
+            _next:
+              type: string
+              description: "Step name to run unconditionally next."
+            _on_success:
+              type: string
+              description: "Step name if this operation succeeds."
+            _on_error:
+              type: string
+              description: "Step name if this operation fails."
+            _retry:
+              description: "Retry policy on failure"
+              properties:
+                attempts:
+                  type: integer
+                  description: "Number of retry attempts."
+                delay:
+                  type: string
+                  description: "Delay between retries (e.g., '5s')."
+            _timeout:
+              type: string
+              description: "Max time to wait for operation (e.g., '30s')."
+          required:
+            - _call
+
+        # === Decision Step ===
+        _decision:
+          description: "Conditional branching (nested logic)"
+          properties:
+            _inputs:
+              type: object
+              additionalProperties: { type: string }
+              description: |
+                Map of variable names → JSON-pointer inputs from context.
+            _cases:
+              type: array
+              description: "Array of branching cases"
+              items:
+                type: object
+                properties:
+                  _operator:
+                    type: string
+                    enum: [AND, OR, NOT]
+                    default: AND
+                    description: "Logical grouping operator for nested cases."
+                  _conditions:
+                    type: array
+                    items:
+                      $ref: "#/concepts/Step/schema/properties/_decision/properties/_cases/items"
+                    description: "Array of sub-cases for grouped logic."
+                  _value:
+                    type: string
+                    description: "JSON-pointer or variable name for comparison."
+                  _reference:
+                    type: string
+                    description: "Value (literal or pointer) to compare against."
+                  _compare:
+                    type: string
+                    default: "="
+                    description: "Comparison operator (e.g., =, !=, >, <, in)."
+                  _type:
+                    type: string
+                    default: "string"
+                    description: "Data type of the comparison."
+                  _next:
+                    type: string
+                    description: "Step to execute if this case matches."
+                required:
+                  - _next
+            _default:
+              type: string
+              description: "Fallback step if no cases match."
+          required:
+            - _cases
+
+        # === Transform Step ===
+        _transform:
+          description: "Data transformation or aggregation"
+          properties:
+            _from:
+              type: string
+              description: "JSON-pointer to source data."
+            _op:
+              type: string
+              description: "Operation (sum, map, filter, etc.)."
+            _to:
+              type: string
+              description: "JSON-pointer where result is written."
+            _next:
+              type: string
+              description: "Next step after transform."
+          required:
+            - _from
+            - _op
+            - _to
+            - _next
+
+        # === Terminate Step ===
+        _terminate:
+          description: "End the workflow and return final context"
+          properties:
+            _status:
+              type: string
+              default: success
+              description: "Final status (e.g., 'success', 'error')."
+            _result:
+              type: object
+              description: "Final output payload."
+          required:
+            - _status
+            - _result
+
+        # === Fork Step ===
+        _fork:
+          description: "Launch parallel branches"
+          properties:
+            _branches:
+              type: array
+              items: { type: string }
+              description: "Step names to start in parallel."
+            _next:
+              type: string
+              description: "Step to run once all branches complete."
+          required:
+            - _branches
+
+        # === Merge Step ===
+        _merge:
+          description: "Join parallel branches and aggregate outputs"
+          properties:
+            _from:
+              type: array
+              items: { type: string }
+              description: "Branch names to wait for."
+            _op:
+              type: string
+              description: "Aggregation operator (join, reduce, sum)."
+            _to:
+              type: string
+              description: "JSON-pointer for merged result."
+            _next:
+              type: string
+              description: "Step after merging completes."
+          required:
+            - _from
+            - _op
+            - _to
+            - _next
+
+        # === Wait Step ===
+        _wait:
+          description: "Pause until a time or event"
+          properties:
+            _until:
+              type: string
+              description: "ISO timestamp, duration, or event name."
+            _next:
+              type: string
+              description: "Step to execute after wait."
+          required:
+            - _until
+            - _next
+
+        # === No-Op Step ===
+        _noop:
+          description: "No operation (placeholder)"
+          properties:
+            _next:
+              type: string
+              description: "Step to execute next."
+          required:
+            - _next
+
+# ======================================================================
+# End of base.sops
+# ======================================================================

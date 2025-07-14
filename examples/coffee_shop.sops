@@ -1,0 +1,205 @@
+version: 1.0
+namespace: example.coffee_shop
+extends:
+  - ./base.sops
+
+paths:
+  /coffee_shop:
+    order:
+      _expects: { $ref: "#/concepts/OrderContext" }
+      _returns: { $ref: "#/concepts/OrderContext" }
+      _call: [ Cashier, take_order, $ ]
+
+concepts:
+  Beverage:
+    extends: Concept
+    schema:
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        size:
+          type: string
+          enum: [ small, medium, large ]
+        nature:
+          type: string
+          enum: [ physical ]
+      required: [ id, name, size, nature ]
+
+  OrderContext:
+    extends: Context
+    schema:
+      properties:
+        _payload:
+          type: object
+          properties:
+            order_id:
+              type: string
+            beverage:
+              $ref: "#/concepts/Beverage"
+            size:
+              type: string
+              enum: [ small, medium, large ]
+          required: [ order_id, beverage, size ]
+
+  Visitor:
+    extends: Actor
+    id: visitor
+    name: "Visitor"
+    description: "Customer placing an order"
+    _actions:
+      place_order:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns: { $ref: "#/concepts/OrderContext" }
+        _call: [ Cashier, take_order, $ ]
+
+  Cashier:
+    extends: Actor
+    id: cashier
+    name: "Cashier"
+    description: "Takes orders and processes payment"
+    _actions:
+      take_order:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns: { $ref: "#/concepts/OrderContext" }
+        _step: [ self, process_order, $ ]
+    _steps:
+      process_order:
+        _operation:
+          _call: [ PaymentProcessor, validate_payment, $ ]
+          _on_success: record_order
+          _on_failure: payment_failed
+      record_order:
+        _operation:
+          _call: [ Register, record_order, $ ]
+          _next: call_barista
+      call_barista:
+        _operation:
+          _call: [ Barista, prepare_beverage, $ ]
+          _next: complete
+      payment_failed:
+        _terminate:
+          _status: error
+          _result: { message: 'Payment failed' }
+      complete:
+        _terminate:
+          _status: success
+          _result: { }
+
+  PaymentProcessor:
+    extends: Actor
+    id: payment_processor
+    name: "Payment Processor"
+    description: "Validates payment before order registration"
+    _actions:
+      validate_payment:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns: { $ref: "#/concepts/OrderContext" }
+        _terminate:
+          _status: success
+          _result: { }
+
+  Register:
+    extends: Actor
+    id: register
+    name: "Register"
+    description: "Point-of-sale terminal"
+    _actions:
+      record_order:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns: { $ref: "#/concepts/OrderContext" }
+        _step: [ self, process_record, $ ]
+    _steps:
+      process_record:
+        _operation:
+          _call: [ Register_Printer, print_receipt, $ ]
+          _next: send_barista_ticket
+      send_barista_ticket:
+        _operation:
+          _call: [ Barista_Printer, print_ticket, $ ]
+          _next: _terminate
+      _terminate:
+        _terminate:
+          _status: success
+          _result: { }
+
+  Register_Printer:
+    extends: Actor
+    id: register_printer
+    name: "Register Printer"
+    description: "Prints customer receipts"
+    _actions:
+      print_receipt:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns:
+          type: object
+          properties:
+            success: { type: boolean }
+          required: [ success ]
+        _terminate:
+          _status: success
+          _result:
+            success: true
+
+  Barista:
+    extends: Actor
+    id: barista
+    name: "Barista"
+    description: "Prepares beverages"
+    _actions:
+      prepare_beverage:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns: { $ref: "#/concepts/OrderContext" }
+        _step: [ self, brew, $ ]
+    _steps:
+      brew:
+        _operation:
+          _call: [ Barista_Printer, print_ticket, $ ]
+          _next: ready_for_delivery
+      ready_for_delivery:
+        _operation:
+          _call: [ Server, deliver_beverage, $ ]
+          _next: finish
+      finish:
+        _terminate:
+          _status: success
+          _result: { }
+
+  Barista_Printer:
+    extends: Actor
+    id: barista_printer
+    name: "Barista Printer"
+    description: "Prints barista order tickets"
+    _actions:
+      print_ticket:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns:
+          type: object
+          properties:
+            success: { type: boolean }
+          required: [ success ]
+        _terminate:
+          _status: success
+          _result:
+            success: true
+
+  Server:
+    extends: Actor
+    id: server
+    name: "Server"
+    description: "Delivers drinks and thanks the guest"
+    _actions:
+      deliver_beverage:
+        _expects: { $ref: "#/concepts/OrderContext" }
+        _returns:
+          type: object
+          properties:
+            success: { type: boolean }
+            message: { type: string }
+          required: [ success, message ]
+        _terminate:
+          _status: success
+          _result:
+            success: true
+            message: "Thank you for your order!"
