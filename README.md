@@ -82,6 +82,11 @@ View the foundation here: [base.sops](./base.sops)
 ## Example SOPs File
 View a sample SOPs file that defines a simple coffee shop workflow: [coffee-shop.sops](./examples/coffee-shop.sops)
 
+## SOPs Specifications Draft
+
+This document outlines the initial draft of the SOPs language specification. It is a work in progress and subject to change as we gather feedback and iterate on the design.
+
+See the [SOPs Specifications](./docs/README.md) for detailed definitions and examples at the current stage.
 
 ## Roadmap & Next Steps
 
