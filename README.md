@@ -1,5 +1,8 @@
 # SOPs Language (Planning Phase)
 
+> You know how hard it is to make humans, businesses, machines, and AIs speak all the same language?  
+> SOPs brings that common language to the table — simple, clear, and ready to use, no matter who or what you are.
+
 ## Background and Motivation
 
 Defining clear, executable procedures remains challenging across organizations:
@@ -75,6 +78,10 @@ Actor:
 ```
 
 View the foundation here: [base.sops](./base.sops)
+
+## Example SOPs File
+View a sample SOPs file that defines a simple coffee shop workflow: [coffee-shop.sops](./coffee-shop.sops)
+
 
 ## Roadmap & Next Steps
 
